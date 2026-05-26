@@ -1,18 +1,46 @@
-# Unit Tests for Example Module
-#
-# These tests use mock providers — no real AWS calls are made.
-# Run with: terraform test
-# Run verbose: terraform test -verbose
-# Run specific: terraform test -run "test_name"
-
 mock_provider "aws" {}
 
-# ---------------------------------------------------------------------------
-# Test: Module creates resources with valid inputs
-# ---------------------------------------------------------------------------
-# variables {
-#   name        = "test-bucket"
-#   environment = "dev"
-#   namespace   = "unit"
-#   enabled     = true
-# }
+run "creates_website_config_with_defaults" {
+  variables {
+    name        = "test"
+    environment = "dev"
+    namespace   = "unit"
+    bucket_id   = "my-test-bucket"
+  }
+
+  assert {
+    condition     = output.website_endpoint != null
+    error_message = "website_endpoint should not be null when enabled"
+  }
+}
+
+run "creates_nothing_when_disabled" {
+  variables {
+    name        = "test"
+    environment = "dev"
+    namespace   = "unit"
+    enabled     = false
+    bucket_id   = "my-test-bucket"
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_website_configuration.this) == 0
+    error_message = "No resource should be created when disabled"
+  }
+}
+
+run "supports_custom_documents" {
+  variables {
+    name           = "test"
+    environment    = "dev"
+    namespace      = "unit"
+    bucket_id      = "my-test-bucket"
+    index_document = "home.html"
+    error_document = "404.html"
+  }
+
+  assert {
+    condition     = output.website_endpoint != null
+    error_message = "Should create website config with custom documents"
+  }
+}
