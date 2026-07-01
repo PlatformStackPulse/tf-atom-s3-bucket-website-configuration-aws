@@ -1,5 +1,7 @@
 # tf-atom-s3-bucket-website-configuration-aws
 
+Terraform atom that configures static website hosting on an existing S3 bucket — index/error documents plus optional routing rules for redirects.
+
 [![CI](https://github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws/actions/workflows/ci.yml)
 [![Release](https://github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws/actions/workflows/auto-release.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws/actions/workflows/auto-release.yml)
 
@@ -37,22 +39,31 @@ Configures static website hosting for an S3 bucket with index/error documents an
 
 ## Features
 
-- **Single-resource atom** — one `aws_s3_bucket_website_configuration`
-- **Sensible defaults** — `index.html` and `error.html` out of the box
-- **Routing rules** — redirect support with conditions
-- **Tested** — unit tests for defaults, disabled, and custom documents
+- **Single-resource atom** — manages exactly one `aws_s3_bucket_website_configuration`.
+- **Sensible defaults** — `index.html` index document and `error.html` error document out of the box.
+- **Optional error document** — set `error_document = null` to omit it entirely.
+- **Routing rules** — full redirect support with optional `condition` (HTTP error code / key prefix) and `redirect` targets.
+- **Conditional creation** — the tf-label `enabled` flag gates all resources (`count`), so the module can be toggled off without removing the call.
+- **tf-label context chaining** — accepts `context = module.this.context` for consistent naming/tagging across the composition.
 
 ## Usage
 
 ```hcl
 module "website_config" {
-  source = "github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws?ref=v1.0.0"
+  source = "git::https://github.com/PlatformStackPulse/tf-atom-s3-bucket-website-configuration-aws.git?ref=v1.0.0"
 
   context   = module.this.context
   bucket_id = module.bucket.bucket_id
 
   index_document = "index.html"
   error_document = "404.html"
+
+  routing_rules = [
+    {
+      condition = { key_prefix_equals = "docs/" }
+      redirect  = { replace_key_prefix_with = "documents/" }
+    }
+  ]
 }
 ```
 
@@ -118,3 +129,26 @@ module "website_config" {
 | <a name="output_website_domain"></a> [website\_domain](#output\_website\_domain) | Website domain |
 | <a name="output_website_endpoint"></a> [website\_endpoint](#output\_website\_endpoint) | Website endpoint URL |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+Unit tests live in `tests/unit/main_test.tftest.hcl` and run against a mocked AWS
+provider (`mock_provider "aws" {}`), so they execute offline with no credentials.
+They assert only on plan-known values (resource count, input pass-throughs, the
+`enabled` output) — never on computed attributes such as `website_endpoint`, which
+are unknown under a mock provider.
+
+| Run block | Verifies |
+|-----------|----------|
+| `creates_when_enabled` | Exactly one resource is created; `enabled` output is `true`; `bucket_id` and default `index.html` pass through. |
+| `supports_custom_documents` | Custom `index_document` / `error_document` values are honoured. |
+| `disabled_creates_nothing` | `enabled = false` creates zero resources and yields `null` computed outputs. |
+
+Run them locally with:
+
+```bash
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+# or
+make test-unit
+```
